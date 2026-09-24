@@ -1,10 +1,14 @@
+import os
+
 from uuid import uuid4
 from pydantic import BaseModel
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from pymongo import MongoClient
+
+MONGO_URL = os.getenv('MONGO_URL', 'mongodb://localhost:27017/')
 
 app = FastAPI(
     title='Car API',
@@ -36,11 +40,17 @@ class Car(BaseModel):
     available: bool = True
 
 
-try:
-    client = MongoClient('mongodb://localhost:27017/')
-    db = client['car']['production']
-except Exception as exception:
-    print(f"Error connecting to MongoDB: {exception}")
+client = MongoClient(MONGO_URL)
+db = client['car']['production']
+
+
+def find_car(car_id: str):
+    document = db.find_one({'_id': car_id})
+
+    if not document:
+        raise HTTPException(status_code=404, detail=f'car \'{car_id}\' not found')
+
+    return document
 
 
 # car crud
@@ -53,39 +63,18 @@ except Exception as exception:
 async def create_car(car: Car):
     car_id = str(uuid4())
 
-    db.insert_one({
-        '_id': car_id,
+    db.insert_one({'_id': car_id, **car.model_dump()})
 
-        'brand': car.brand,
-        'model': car.model,
-
-        'color': car.color,
-        'description': car.description,
-
-        'year': car.year,
-        'type': car.type,
-
-        'image': car.image,
-        'price': car.price,
-
-        'available': car.available
-    })
-
-    return {'message': f'created: {car_id}'}, 200
+    return {'message': f'created: {car_id}', 'id': car_id}
 
 
 @app.get(
     '/car/{car_id}',
     description='Retrieve details of a specific car by its ID.',
-    response_description='Details of the car if found, or a message indicating the car was not found.'
+    response_description='Details of the car if found, or 404 if the car was not found.'
 )
 async def read_car(car_id: str):
-    document = db.find_one({'_id': car_id})
-
-    if not document:
-        return {'message': f'car \'{car_id}\'  not found'}, 404
-
-    return document, 200
+    return find_car(car_id)
 
 
 @app.put(
@@ -94,30 +83,11 @@ async def read_car(car_id: str):
     response_description='Confirmation message with the updated car ID.'
 )
 async def update_car(car_id: str, car: Car):
-    document = db.find_one({'_id': car_id})
+    find_car(car_id)
 
-    if not document:
-        return {'message': f'car \'{car_id}\' not found'}, 404
+    db.update_one({'_id': car_id}, {'$set': car.model_dump()})
 
-    db.update_one({'_id': car_id}, {
-        '$set': {
-            'brand': car.brand,
-            'model': car.model,
-
-            'color': car.color,
-            'description': car.description,
-
-            'year': car.year,
-            'type': car.type,
-
-            'image': car.image,
-            'price': car.price,
-
-            'available': car.available
-        }
-    })
-
-    return {'message': f'updated: {car_id}'}, 200
+    return {'message': f'updated: {car_id}'}
 
 
 @app.delete(
@@ -125,15 +95,12 @@ async def update_car(car_id: str, car: Car):
     description='Delete a car entry by its ID.',
     response_description='Confirmation message with the deleted car ID.'
 )
-async def delete_car(car_id):
-    document = db.find_one({'_id': car_id})
-
-    if not document:
-        return {'message': f'car \'{car_id}\'  not found'}, 404
+async def delete_car(car_id: str):
+    find_car(car_id)
 
     db.delete_one({'_id': car_id})
 
-    return {'message': f'deleted: {car_id}'}, 200
+    return {'message': f'deleted: {car_id}'}
 
 
 # cars search
@@ -142,12 +109,7 @@ async def delete_car(car_id):
 @app.get(
     '/cars/',
     description='Retrieve details of all cars.',
-    response_description='List of cars if available, or a message indicating no cars are found.'
+    response_description='List of cars (empty if there are none).'
 )
 async def read_cars():
-    cars = list(db.find())
-
-    if not cars:
-        return {'message': 'empty'}, 404
-
-    return cars, 200
+    return list(db.find())

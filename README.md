@@ -26,7 +26,7 @@ Microservicio REST para el catálogo de autos, construido con **FastAPI** y **Mo
 | `DELETE` | `/car/{car_id}` | Elimina un auto |
 | `GET` | `/cars/` | Lista todos los autos |
 
-La documentación interactiva queda disponible en `/docs` (Swagger UI).
+Los recursos inexistentes responden `404`. La documentación interactiva queda disponible en `/docs` (Swagger UI).
 
 ### Modelo `Car`
 
@@ -44,9 +44,13 @@ La documentación interactiva queda disponible en `/docs` (Swagger UI).
 }
 ```
 
-## Ejecución
+## Configuración
 
-Requiere MongoDB escuchando en `localhost:27017`.
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `MONGO_URL` | `mongodb://localhost:27017/` | Conexión a MongoDB |
+
+## Ejecución
 
 ```bash
 # MongoDB local
@@ -56,7 +60,7 @@ docker run -d --name mongo -p 27017:27017 mongo
 pip install -r requirements.txt
 fastapi dev main.py --port 8002
 
-# Docker (usa la red del host para alcanzar MongoDB en localhost)
+# Docker
 docker build -t car-service .
 docker run --network host car-service
 ```
